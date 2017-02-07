@@ -1,72 +1,77 @@
 function main() {
-    var xml = ZenMoney.retrieveCode('lala');
+    let preferences = ZenMoney.getPreferences();
 
-    var items = xml2json(xml);
-    for (var i = 0; i < items.length; i++) {
-        var item = items[i];
-        if (item.name == 'stmitem') {
-            ZenMoney.trace(item.properties.date + ' ' + item.properties.amount + ' ' + item.properties.name)
-        }
-    }
+    if (!preferences.login) throw new ZenMoney.Error("Введите логин в интернет-банк.", null, true);
+    if (!preferences.password) throw new ZenMoney.Error("Введите пароль в интернет-банк.", null, true);
+    // if (!preferences.pin) throw new ZenMoney.Error("Введите ПИН-код мобильного приложения Enter-Unicredit.", null, true);
 
-    // let preferences = ZenMoney.getPreferences();
-
-    // if (!preferences.login) throw new ZenMoney.Error("Введите логин в интернет-банк!", null, true);
-    // if (!preferences.password) throw new ZenMoney.Error("Введите пароль в интернет-банк!", null, true);
-    // if (!preferences.pin) throw new ZenMoney.Error("Введите ПИН-код мобильного приложения Сбербанк Онлайн!", null, true);
-
-    // let authToken = tryLogin();
-    // loadAccounts(authToken);
+    // login();
+    loadAccounts();
     // loadTransactions(authToken);
 
     ZenMoney.setResult({ success: true });
 }
 
-var CARDS_REGEXP = /<node((\s+\w+=\"[^\"]+\")+)><\/node>/im;
+function login() {
+    throw 'not implemented';
+}
 
-function loadAccounts() {
-    let html = ZenMoney.requestGet(ACCOUNTS_URI);
+//var baseUrl = 'https://enter.unicredit.ru/v2/cgi/bsi.dll';
+var baseUrl = 'https://localhost/v2/cgi/bsi.dll';
+function loadAccounts(sessionId) {
+    // var request = {
+    //     T: 'RT_iphone_1common.start',
+    //     Console: 'iphone',
+    //     TIC: 0,
+    //     SID: 'VOPFGRWGVK.460927.S9FOMJ*',
+    //     L: 'RUSSIAN',
+    //     Scale: 2.000000,
+    //     MODE: 'NEW',
+    //     appversion: '2.18.23.1'
+    // };
 
-    let cardNodes = getCardNodes(html);
-    let accountNodes = getAccountNodes(html);
+    // var responseXml = ZenMoney.requestPost(baseUrl, request, defaultHeaders);
 
-    for (let i = 0; i < cardNodes.length; i++) {
-        let card = getCard(cardNodes[i]);
-        ZenMoney.addAccount(card);
+    var responseXml = ZenMoney.retrieveCode();
+    var json = xml2json(responseXml);
+    var foundAccounts = [];
+
+    for (var i = 0; i < json.length; i++) {
+        var node = json[i];
+
+        var account = node.properties;
+        if (node.name == "card") {
+
+            if (ZenMoney.getLevel() >= 13 && ZenMoney.isAccountSkipped(account.id)) {
+                continue;
+            }
+
+            foundAccounts.push({
+                id: account.id,
+                title: account.name,
+                type: 'ccard',
+                balance: parseFloat(account.ownfunds),
+                // syncID: [account.number.substring(account.number.length - 4)]
+                syncID: [account.id]
+            });
+        }
+        else if (node.name == "account") {
+            if (ZenMoney.getLevel() >= 13 && ZenMoney.isAccountSkipped(account.number)) {
+                continue;
+            }
+
+            foundAccounts.push({
+                id: account.number,
+                title: account.name,
+                type: 'checking',
+                balance: parseFloat(account.rest),
+                syncID: [account.number.substring(account.number.length - 4)]
+            });
+        }
+
+        ZenMoney.trace('done with ' + node.name);
     }
 
-    for (let i = 0; i < accountNodes.length; i++) {
-        let account = getAccount(accountNodes[i]);
-        ZenMoney.addAccount(account);
-    }
-
-    // var myregexp = /<node((\s+\w+=\"[^\"]+\")+)><\/node>/im;
-    // var match = myregexp.exec("<Node attribute=\"one\" attribute2=\"two\" n=\"nth\"></node>");
-    // if (match != null) {
-    // 	result = match[1].trim();
-    //   var arrayAttrs = result.split(/\s+/);
-    //   for(var a = 0; a<arrayAttrs.length;a++){
-    //   	alert(arrayAttrs[a]);
-    //   }
-    // }
-}
-
-function getCard(node) {
-    throw "not implemented";
-}
-
-function account(node) {
-    throw "not implemented";
-}
-
-function getCardNodes(html) {
-    throw "not implemented";
-}
-
-function getAccountNodes(html) {
-    throw "not implemented";
-}
-
-function tryLogin() {
-    throw "not implemented";
+    ZenMoney.trace('Всего счетов добавлено: ' + foundAccounts.length);
+    ZenMoney.addAccount(foundAccounts);
 }

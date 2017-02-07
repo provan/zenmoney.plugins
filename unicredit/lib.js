@@ -43,3 +43,14 @@ function getJson(xml) {
         var attributes = xml2json(tag);
     }
 }
+
+var defaultHeaders = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'User-Agent': 'UniCredit%20Mobile/2.18.23.1 CFNetwork/808.3 Darwin/16.3.0',
+    'Connection': 'keep-alive',
+    'Accept': '*/*',
+    'Accept-Language': 'ru',
+    'Content-Length': '131',
+    'Accept-Encoding': 'gzip, deflate',
+    'Cache-Control': 'max-age=0'
+};
