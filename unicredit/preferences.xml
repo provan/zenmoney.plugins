@@ -6,7 +6,7 @@
         summary="|ID пользователя или логин|{@s}"
         dialogTitle="Логин"
         negativeButtonText="Отмена"
-        dialogMessage="Введите идентификатор пользователя или логин для входа в систему Сбербанк Онлайн."
+        dialogMessage="Введите идентификатор пользователя или логин для входа в интернет-банк."
         obligatory="true"
         key="login">
     </EditTextPreference>
@@ -18,7 +18,7 @@
         title="Пароль"
         summary="||***********"
         obligatory="true"
-        dialogMessage="Введите пароль, используемый для входа в систему Сбербанк Онлайн."
+        dialogMessage="Введите пароль, используемый для входа в интернет-банк."
         inputType="textPassword">
     </EditTextPreference>
 </PreferenceScreen>

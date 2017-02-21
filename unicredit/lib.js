@@ -1,11 +1,18 @@
-function getTags(tagName) {
-}
+var defaultHeaders = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'User-Agent': 'UniCredit Mobile/2.18.23.1 CFNetwork/808.3 Darwin/16.3.0',
+    'Connection': 'keep-alive',
+    'Accept': '*/*',
+    'Accept-Language': 'ru',
+    'Accept-Encoding': 'gzip, deflate',
+    'Cache-Control': 'max-age=0'
+};
 
-// var GET_ATTRIBUTES_REGEX = /<node((\s+\w+=\"[^\"]+\")+)><\/node>/im;
-// var GET_ATTRIBUTES_REGEX = /<(\w+)(?:(\s+(\w+)=\"([^\"]*)\")+)\s*\/?>/igm;
+var baseUrl = 'https://enter.unicredit.ru/v2/cgi/bsi.dll';
 
 var GET_TAG_REGEX = /<(\w+)[^>]*\/?\s?>/igm;
 var GET_ATTRIBUTE_REGEX = /\s+(\w+)=\"([^\"]*)\"/igm;
+var FIRST_SYNC_PERIOD = 6*30;
 
 function xml2json(xml) {
     var tagMatch;
@@ -44,13 +51,10 @@ function getJson(xml) {
     }
 }
 
-var defaultHeaders = {
-    'Content-Type': 'application/x-www-form-urlencoded',
-    'User-Agent': 'UniCredit%20Mobile/2.18.23.1 CFNetwork/808.3 Darwin/16.3.0',
-    'Connection': 'keep-alive',
-    'Accept': '*/*',
-    'Accept-Language': 'ru',
-    'Content-Length': '131',
-    'Accept-Encoding': 'gzip, deflate',
-    'Cache-Control': 'max-age=0'
-};
+function newGuid() {
+    return s4() + s4() + '-' + s4() + '-' + s4() + '-' + s4() + '-' + s4() + s4() + s4();
+}
+
+function s4() {
+    return Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
+}
