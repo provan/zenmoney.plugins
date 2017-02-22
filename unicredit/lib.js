@@ -73,7 +73,7 @@ var cardNumberRegex = /\d+/;
 function getCardId(inputString) {
     var result = cardNumberRegex.exec(inputString);
     if (!result)
-        throw "Не удается распарсить ID аккаунта";
+        throw "Не удается распознать ID аккаунта";
     return result[0];
 }
 

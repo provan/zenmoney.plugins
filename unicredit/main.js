@@ -112,7 +112,8 @@ function parseAccounts(json) {
         return foundAccounts;
     }
     catch (e) {
-        throw ZenMoney.Error(`Не удалось разобрать список счетов.`);
+        ZenMoney.trace(`Exception: ${e}`);
+        throw ZenMoney.Error('Не удалось разобрать список счетов.');
     }
 }
 
@@ -205,6 +206,7 @@ function parseTransactions(accounts, json) {
         return transactions;
     }
     catch (e) {
+        ZenMoney.trace(`Exception: ${e}`);
         throw ZenMoney.Error('Ошибка при обработке транзакций');
     }
 }
