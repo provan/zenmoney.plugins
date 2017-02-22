@@ -8,8 +8,7 @@ var defaultHeaders = {
     'Cache-Control': 'max-age=0'
 };
 
-var baseUrl = 'https://enter.unicredit.ru/v2/cgi/bsi.dll';
-
+var BASE_URL = 'https://enter.unicredit.ru/v2/cgi/bsi.dll';
 var GET_TAG_REGEX = /<(\w+)[^>]*\/?\s?>/igm;
 var GET_ATTRIBUTE_REGEX = /\s+(\w+)=\"([^\"]*)\"/igm;
 var FIRST_SYNC_PERIOD = 6 * 30;
@@ -42,14 +41,6 @@ function xml2json(xml) {
     }
 
     return objArray;
-}
-
-function getJson(xml) {
-    var tags = getTags(xml);
-    for (var i = 0; i < tags.length; i++) {
-        var tag = tags[i];
-        var attributes = xml2json(tag);
-    }
 }
 
 function newGuid() {
