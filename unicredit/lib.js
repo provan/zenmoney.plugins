@@ -12,7 +12,7 @@ var baseUrl = 'https://enter.unicredit.ru/v2/cgi/bsi.dll';
 
 var GET_TAG_REGEX = /<(\w+)[^>]*\/?\s?>/igm;
 var GET_ATTRIBUTE_REGEX = /\s+(\w+)=\"([^\"]*)\"/igm;
-var FIRST_SYNC_PERIOD = 6*30;
+var FIRST_SYNC_PERIOD = 6 * 30;
 
 function xml2json(xml) {
     var tagMatch;
@@ -37,7 +37,8 @@ function xml2json(xml) {
         }
     }
     catch (e) {
-        ZenMoney.trace('error: ' + e);
+        ZenMoney.trace('XmlParseError: ' + e);
+        return null;
     }
 
     return objArray;
@@ -57,4 +58,30 @@ function newGuid() {
 
 function s4() {
     return Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
+}
+
+function getDateString(date) {
+    var day = date.getDate();
+    var month = date.getMonth() + 1;
+    var year = date.getFullYear();
+
+    return `${("0" + day).slice(-2)}.${("0" + month).slice(-2)}.${year}`;
+}
+
+function parseDate(str, separator) {
+    if (!separator)
+        separator = ".";
+
+    var parts = str.split(separator);
+    return new Date(parseInt(parts[2], 10),
+        parseInt(parts[1], 10) - 1,
+        parseInt(parts[0], 10));
+}
+
+var cardNumberRegex = /\d+/;
+function getCardId(inputString) {
+    var result = cardNumberRegex.exec(inputString);
+    if (!result)
+        throw "Не удается распарсить ID аккаунта";
+    return result[0];
 }

@@ -1,29 +1,40 @@
-var _appSettings;
-var _deviceId;
-
 function main() {
-    _appSettings = ZenMoney.getPreferences();
-    if (!_appSettings.login) throw new ZenMoney.Error("Введите логин в интернет-банк.", null, true);
-    if (!_appSettings.password) throw new ZenMoney.Error("Введите пароль в интернет-банк.", null, true);
+    var appSettings = ZenMoney.getPreferences();
+    if (!appSettings.login) throw new ZenMoney.Error("Введите логин для входа в интернет-банк.", null, true);
+    if (!appSettings.password) throw new ZenMoney.Error("Введите пароль для входа в интернет-банк.", null, true);
 
-    getDeviceId();
+    var sessionId = login(appSettings.login, appSettings.password);
+    if (!sessionId)
+        throw ZenMoney.Error('Не удалось авторизоваться');
 
-    var sessionId = login(_appSettings.login, _appSettings.password);
+    var accounts = getAccounts(sessionId);
+    addAccounts(accounts);
 
-    ZenMoney.trace('SESSION_ID: ' + sessionId);
+    if (!accounts || accounts.length == 0)
+        return;
 
-    var accounts = processAccounts(sessionId);
-    processTransactions(accounts, sessionId);
+    var operations = getOperations(sessionId);
+    var transactions = getTransactions(accounts, operations);
+    addTransactions(transactions);
 
     ZenMoney.saveData();
     ZenMoney.setResult({ success: true });
 }
 
+function addAccounts(accounts) {
+    if (!accounts || accounts.length == 0)
+        return;
+
+    var filteredAccounts = accounts.filter(e => !isAccountSkipped(e.id));
+    ZenMoney.addAccount(accounts);
+    ZenMoney.trace('Всего счетов добавлено: ' + accounts.length);
+}
+
 function getDeviceId() {
-    _deviceId = ZenMoney.getData('deviceId');
-    if (!_deviceId) {
-        _deviceId = newGuid();
-        ZenMoney.setData('deviceId', _deviceId);
+    var deviceId = ZenMoney.getData('deviceId');
+    if (!deviceId) {
+        deviceId = newGuid();
+        ZenMoney.setData('deviceId', deviceId);
     }
 }
 
@@ -32,7 +43,7 @@ function login(login, password) {
         T: "rt_2Auth.CL",
         A: login,
         B: password,
-        DeviceId: _deviceId,
+        DeviceId: getDeviceId(),
         MobDevice: "apple",
         MobModel: "iPhone 5s (model A1457, A1518, A1528 (China), A1530 | Global)",
         MobOS: "iPhone OS 10.2.1",
@@ -47,7 +58,6 @@ function login(login, password) {
     var loginResponse = ZenMoney.requestPost(baseUrl, loginRequest, defaultHeaders);
 
     var jsonResponse = xml2json(loginResponse);
-    var sessionId;
     for (var i = 0; i < jsonResponse.length; i++) {
         var item = jsonResponse[i];
         if (item.name != "information")
@@ -57,7 +67,11 @@ function login(login, password) {
     }
 }
 
-function processAccounts(sessionId) {
+function isAccountSkipped(accountId) {
+    return ZenMoney.getLevel() >= 13 && ZenMoney.isAccountSkipped(accountId);
+}
+
+function getAccounts(sessionId) {
     var request = {
         T: 'RT_iphone_1common.start',
         Console: 'iphone',
@@ -73,16 +87,11 @@ function processAccounts(sessionId) {
 
     var json = xml2json(responseXml);
     var foundAccounts = [];
-
     for (var i = 0; i < json.length; i++) {
         var node = json[i];
 
         var account = node.properties;
         if (node.name == "card") {
-            if (ZenMoney.getLevel() >= 13 && ZenMoney.isAccountSkipped(account.account)) {
-                continue;
-            }
-
             foundAccounts.push({
                 id: account.account,
                 title: account.name,
@@ -92,10 +101,6 @@ function processAccounts(sessionId) {
             });
         }
         else if (node.name == "account") {
-            if (ZenMoney.getLevel() >= 13 && ZenMoney.isAccountSkipped(account.number)) {
-                continue;
-            }
-
             foundAccounts.push({
                 id: account.number,
                 title: account.name,
@@ -106,27 +111,10 @@ function processAccounts(sessionId) {
         }
     }
 
-    ZenMoney.addAccount(foundAccounts);
-    ZenMoney.trace('Всего счетов добавлено: ' + foundAccounts.length);
-
-    var accountsMap = {};
-    for (var i = 0; i < foundAccounts.length; i++) {
-        var acc = foundAccounts[i];
-        accountsMap[acc.id] = acc;
-    }
-
-    return accountsMap;
+    return foundAccounts;
 }
 
-function getDateString(date) {
-    var day = date.getDate();
-    var month = date.getMonth() + 1;
-    var year = date.getFullYear();
-
-    return `${("0" + day).slice(-2)}.${("0" + month).slice(-2)}.${year}`;
-}
-
-function processTransactions(accounts, sessionId) {
+function getOperations(sessionId) {
     var lastSyncDate = getLastSyncDate();
     var startDate = getDateString(new Date(lastSyncDate));
     var endDate = getDateString(new Date());
@@ -147,35 +135,34 @@ function processTransactions(accounts, sessionId) {
     };
 
     var xml = ZenMoney.requestPost(baseUrl, getHistoryRequest, defaultHeaders);
-    updateTransactions(accounts, xml2json(xml));
+    return xml2json(xml);
 }
 
-function getLastSyncDate() {
-    var lastSyncDate = ZenMoney.getData('last_sync', 0);
-    var now = Date.now();
-
-    if (lastSyncDate == 0)
-        lastSyncDate = now - FIRST_SYNC_PERIOD * 24 * 60 * 60 * 1000;
-
-    return Math.min(lastSyncDate, Date.now() - 7 * 24 * 60 * 60 * 1000);
-}
-
-function updateTransactions(accounts, json) {
-    ZenMoney.trace(`Found ${json.length} transactions`)
+function getTransactions(accounts, json) {
+    var transactions = [];
     for (var i = 0; i < json.length; i++) {
         var node = json[i];
         var item = node.properties;
         var tran;
 
+        // в stmitem'ах содержится полная история операций
+        // в том числе и те, что в статусе HOLD
+        // поэтому итерируемся только по ним
         if (node.name != 'stmitem')
             continue;
 
         var accountId = getCardId(item.card);
-        var account = accounts[accountId];
+        var account = accounts.find(e => e.id == accountId);
+
+        if (!account)
+            continue;
+
         var floatAmount = parseFloat(item.amount);
 
+        tran = {};
+        tran.id = `${accountId}_${item.date}_${item.amount}`;
+        tran.date = item.date;
         if (floatAmount > 0) {
-            tran = {};
             tran.income = parseFloat(item.amount);
             tran.incomeAccount = accountId;
             tran.outcome = 0;
@@ -189,7 +176,6 @@ function updateTransactions(accounts, json) {
             }
         }
         else {
-            tran = {};
             tran.outcome = -floatAmount;
             tran.outcomeAccount = accountId;
             tran.income = 0;
@@ -204,15 +190,38 @@ function updateTransactions(accounts, json) {
             }
         }
 
-        if (tran)
-            ZenMoney.addTransaction(tran);
+        transactions.push(tran);
     }
+
+    return transactions;
 }
 
-var cardNumberRegex = /\d+/;
-function getCardId(inputString) {
-    var result = cardNumberRegex.exec(inputString);
-    if (!result)
-        throw "Can't parse account id";
-    return result[0];
+function addTransactions(transactions) {
+    var lastSyncDate = getLastSyncDate();
+
+    for (var i = 0; i < transactions.length; i++) {
+        var tran = transactions[i];
+
+        if (tran) {
+            ZenMoney.addTransaction(tran);
+            ZenMoney.trace(`Добавлена транзакция ${tran.id}`);
+
+            var tranTime = parseDate(tran.date).getTime();
+            if (tranTime > lastSyncDate) {
+                lastSyncDate = tranTime;
+            }
+        }
+    }
+
+    ZenMoney.setData('last_sync', lastSyncDate);
+}
+
+function getLastSyncDate() {
+    var lastSyncDate = ZenMoney.getData('last_sync', 0);
+    var now = Date.now();
+
+    if (lastSyncDate == 0)
+        lastSyncDate = now - FIRST_SYNC_PERIOD * 24 * 60 * 60 * 1000;
+
+    return Math.min(lastSyncDate, Date.now() - 7 * 24 * 60 * 60 * 1000);
 }
