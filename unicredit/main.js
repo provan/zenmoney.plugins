@@ -7,27 +7,22 @@ function main() {
     if (!sessionId)
         throw ZenMoney.Error('Не удалось авторизоваться');
 
-    var accounts = getAccounts(sessionId);
+    var accountItems = getAccounts(sessionId);
+    if (isNullOrEmpty(accountItems))
+        throw ZenMoney.Error('Не удалось загрузить список счетов');
+
+    var accounts = parseAccounts(accountItems);
     addAccounts(accounts);
 
-    if (!accounts || accounts.length == 0)
+    var transactions = getTransactions(sessionId);
+    if (isNullOrEmpty(transactions))
         return;
 
-    var operations = getOperations(sessionId);
-    var transactions = getTransactions(accounts, operations);
-    addTransactions(transactions);
+    var zenTransactions = parseTransactions(accounts, transactions);
+    addTransactions(zenTransactions);
 
     ZenMoney.saveData();
     ZenMoney.setResult({ success: true });
-}
-
-function addAccounts(accounts) {
-    if (!accounts || accounts.length == 0)
-        return;
-
-    var filteredAccounts = accounts.filter(e => !isAccountSkipped(e.id));
-    ZenMoney.addAccount(accounts);
-    ZenMoney.trace('Всего счетов добавлено: ' + accounts.length);
 }
 
 function getDeviceId() {
@@ -55,7 +50,7 @@ function login(login, password) {
         appversion: "2.18.23.1"
     };
 
-    var loginResponse = ZenMoney.requestPost(baseUrl, loginRequest, defaultHeaders);
+    var loginResponse = ZenMoney.requestPost(BASE_URL, loginRequest, defaultHeaders);
 
     var jsonResponse = xml2json(loginResponse);
     for (var i = 0; i < jsonResponse.length; i++) {
@@ -83,38 +78,51 @@ function getAccounts(sessionId) {
         appversion: '2.18.23.1'
     };
 
-    var responseXml = ZenMoney.requestPost(baseUrl, request, defaultHeaders);
-
-    var json = xml2json(responseXml);
-    var foundAccounts = [];
-    for (var i = 0; i < json.length; i++) {
-        var node = json[i];
-
-        var account = node.properties;
-        if (node.name == "card") {
-            foundAccounts.push({
-                id: account.account,
-                title: account.name,
-                type: 'ccard',
-                balance: parseFloat(account.ownfunds),
-                syncID: [account.id]
-            });
-        }
-        else if (node.name == "account") {
-            foundAccounts.push({
-                id: account.number,
-                title: account.name,
-                type: 'checking',
-                balance: parseFloat(account.rest),
-                syncID: [account.number.substring(account.number.length - 4)]
-            });
-        }
-    }
-
-    return foundAccounts;
+    var responseXml = ZenMoney.requestPost(BASE_URL, request, defaultHeaders);
+    return xml2json(responseXml);
 }
 
-function getOperations(sessionId) {
+function parseAccounts(json) {
+    try {
+        var foundAccounts = [];
+        for (var i = 0; i < json.length; i++) {
+            var node = json[i];
+
+            var account = node.properties;
+            if (node.name == "card") {
+                foundAccounts.push({
+                    id: account.account,
+                    title: account.name,
+                    type: 'ccard',
+                    balance: parseFloat(account.ownfunds),
+                    syncID: [account.id]
+                });
+            }
+            else if (node.name == "account") {
+                foundAccounts.push({
+                    id: account.number,
+                    title: account.name,
+                    type: 'checking',
+                    balance: parseFloat(account.rest),
+                    syncID: [account.number.substring(account.number.length - 4)]
+                });
+            }
+        }
+
+        return foundAccounts;
+    }
+    catch (e) {
+        throw ZenMoney.Error(`Не удалось разобрать список счетов.`);
+    }
+}
+
+function addAccounts(accounts) {
+    var filteredAccounts = accounts.filter(e => !isAccountSkipped(e.id));
+    ZenMoney.addAccount(filteredAccounts);
+    ZenMoney.trace('Всего счетов добавлено: ' + filteredAccounts.length);
+}
+
+function getTransactions(sessionId) {
     var lastSyncDate = getLastSyncDate();
     var startDate = getDateString(new Date(lastSyncDate));
     var endDate = getDateString(new Date());
@@ -134,66 +142,71 @@ function getOperations(sessionId) {
         appversion: "2.18.23.1"
     };
 
-    var xml = ZenMoney.requestPost(baseUrl, getHistoryRequest, defaultHeaders);
+    var xml = ZenMoney.requestPost(BASE_URL, getHistoryRequest, defaultHeaders);
     return xml2json(xml);
 }
 
-function getTransactions(accounts, json) {
-    var transactions = [];
-    for (var i = 0; i < json.length; i++) {
-        var node = json[i];
-        var item = node.properties;
-        var tran;
+function parseTransactions(accounts, json) {
+    try {
+        var transactions = [];
+        for (var i = 0; i < json.length; i++) {
+            var node = json[i];
+            var item = node.properties;
+            var tran;
 
-        // в stmitem'ах содержится полная история операций
-        // в том числе и те, что в статусе HOLD
-        // поэтому итерируемся только по ним
-        if (node.name != 'stmitem')
-            continue;
+            // в stmitem'ах содержится полная история операций
+            // в том числе и те, что в статусе HOLD
+            // поэтому итерируемся только по ним
+            if (node.name != 'stmitem')
+                continue;
 
-        var accountId = getCardId(item.card);
-        var account = accounts.find(e => e.id == accountId);
+            var accountId = getCardId(item.card);
+            var account = accounts.find(e => e.id == accountId);
 
-        if (!account)
-            continue;
+            if (!account)
+                continue;
 
-        var floatAmount = parseFloat(item.amount);
+            var floatAmount = parseFloat(item.amount);
 
-        tran = {};
-        tran.id = `${accountId}_${item.date}_${item.amount}`;
-        tran.date = item.date;
-        if (floatAmount > 0) {
-            tran.income = parseFloat(item.amount);
-            tran.incomeAccount = accountId;
-            tran.outcome = 0;
-            tran.outcomeAccount = accountId;
-            tran.payee = item.name;
+            tran = {};
+            tran.id = `${accountId}_${item.date}_${item.amount}`;
+            tran.date = item.date;
+            if (floatAmount > 0) {
+                tran.income = parseFloat(item.amount);
+                tran.incomeAccount = accountId;
+                tran.outcome = 0;
+                tran.outcomeAccount = accountId;
+                tran.payee = item.name;
 
-            // операция в валюте
-            if (account.currency != item.CUR) {
-                tran.opIncome = floatAmount;
-                tran.opIncomeInstrument = item.CUR;
+                // операция в валюте
+                if (account.currency != item.CUR) {
+                    tran.opIncome = floatAmount;
+                    tran.opIncomeInstrument = item.CUR;
+                }
             }
-        }
-        else {
-            tran.outcome = -floatAmount;
-            tran.outcomeAccount = accountId;
-            tran.income = 0;
-            tran.incomeAccount = accountId;
-            tran.comment = item.paymentPurpose;
-            tran.payee = item.contragentName;
-            tran.opOutcomeInstrument = item.CUR;
+            else {
+                tran.outcome = -floatAmount;
+                tran.outcomeAccount = accountId;
+                tran.income = 0;
+                tran.incomeAccount = accountId;
+                tran.comment = item.paymentPurpose;
+                tran.payee = item.contragentName;
+                tran.opOutcomeInstrument = item.CUR;
 
-            // операция в валюте
-            if (account.currency != item.CUR) {
-                tran.opOutcome = -floatAmount;
+                // операция в валюте
+                if (account.currency != item.CUR) {
+                    tran.opOutcome = -floatAmount;
+                }
             }
+
+            transactions.push(tran);
         }
 
-        transactions.push(tran);
+        return transactions;
     }
-
-    return transactions;
+    catch (e) {
+        throw ZenMoney.Error('Ошибка при обработке транзакций');
+    }
 }
 
 function addTransactions(transactions) {

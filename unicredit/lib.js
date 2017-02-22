@@ -76,3 +76,7 @@ function getCardId(inputString) {
         throw "Не удается распарсить ID аккаунта";
     return result[0];
 }
+
+function isNullOrEmpty(array) {
+    return !array || array.length == 0;
+}
